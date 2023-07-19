@@ -1,41 +1,37 @@
 import os
-from pydra import Workflow
-import pydra 
-
+import pydra  
+from pydra import Workflow, mark
+from pydra.tasks.mrtrix3.latest import mrconvert, mrstats
+from fileformats.medimage import NiftiGzXBvec, NiftiGzX
 
 # Define the path and output_path variables
 path = '/Users/arkievdsouza/Documents/NIFdata/ds000114'
-output_path = '/Users/arkievdsouza/git/t1-pipeline/working-dir'
-
-# Define the subject_list and session_list variables
-subject_list = [1,2]
-session_list = ['retest']
-
-# Create a container task to run the DataGrabber
-def datagrabber(subject_id, session_id):
-    from nipype.interfaces.io import DataGrabber
-    dg = DataGrabber(infields=['subject_id', 'session_id'], outfields=['anat', 'dwi'])
-    dg.inputs.base_directory = path
-    dg.inputs.template = '*'
-    dg.inputs.sort_filelist = True
-    dg.inputs.template_args = {'anat': [['subject_id', 'session_id']],
-                               'dwi': [['subject_id', 'session_id']]}
-    dg.inputs.field_template = {'anat': 'sub-%02d/ses-%s/anat/*_T1w.nii.gz',
-                                'dwi': 'sub-%02d/ses-%s/dwi/*_dwi.nii.gz',
-                                }
-    dg.inputs.subject_id = subject_id
-    dg.inputs.session_id = session_id
-    result = dg.run()
-    return result.outputs
-
-# Create a container task to print the output path
-def print_output_path(subject_id, session_id):
-    print(f"Output Path for subject {subject_id}, session {session_id}: {output_path}")
-
+output_path = '/Users/arkievdsouza/git/dwi-pipeline/working-dir'
 
 # Define the input_spec for the workflow
-input_spec = {"subject_id": int, "session_id": str}
+input_spec = {"dwi": NiftiGzXBvec, "t1w": NiftiGzX}
+output_spec = {"dwi_preproc": NiftiGzXBvec}
 
-# Create a workflow
-wf = Workflow(name="nipype_workflow_datagrabber", input_spec=input_spec)
+# Create a workflow and add the dg task
+wf = Workflow(name='my_workflow', input_spec=input_spec) 
+wf.add(
+    mrconvert(
+        input=wf.lzin.dwi,
+        coord=(3, 0),
+        name="select_b0"
+    )
+)
+wf.add(
+    mrstats(
+        input=wf.select_b0.lzout.output,
+        name="mrstats"
+    )
+)
 
+wf.set_output(("dwi_preproc", wf.mrstats.lzout.out_file))
+
+# Execute the workflow
+result = wf(
+    dwi="/Users/arkievdsouza/Documents/NIFdata/ds000114/sub-01/ses-retest/dwi/sub-01_ses-01_dwi.nii.gz",
+    t1w="/Users/arkievdsouza/Documents/NIFdata/ds000114/sub-01/ses-retest/anat/sub-01_ses-01_t1w.nii.gz"
+)
