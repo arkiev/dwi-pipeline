@@ -2,7 +2,7 @@ import os
 import pydra  
 from pydra import Workflow
 from pydra.engine.specs import File
-from pydra.tasks.mrtrix3.latest import mrconvert, dwidenoise
+from pydra.tasks.mrtrix3.v3_0 import mrconvert, dwidenoise
 from fileformats.medimage import NiftiGzXBvec, NiftiGzX
 
 # Define the path and output_path variables
