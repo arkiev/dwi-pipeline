@@ -1,128 +1,143 @@
 import os
+import typing as ty
 import pydra  
 from pydra import Workflow, mark
-from pydra.tasks.mrtrix3.latest import mrconvert, mrstats
-from pydra.tasks.mrtrix3.latest import dwi2mask, dwidenoise, mrdegibbs, dwifslpreproc, dwibiascorrect
+from pydra.engine.specs import File
+from pydra.tasks.mrtrix3.latest import mrconvert, dwi2mask_fslbet, dwidenoise, mrdegibbs, dwifslpreproc, dwibiascorrect_fsl, mrgrid
 
-from fileformats.medimage import NiftiGzXBvec, NiftiGzX
+from fileformats.medimage import NiftiGzXBvec, NiftiGz, MrtrixImage
 
 # Define the path and output_path variables
 path = '/Users/arkievdsouza/Documents/NIFdata/ds000114'
 output_path = '/Users/arkievdsouza/git/dwi-pipeline/working-dir'
 
 # Define the input_spec for the workflow
-input_spec = {"dwi": NiftiGzXBvec, "t1w": NiftiGzX}
-output_spec = {"dwi_preproc": NiftiGzXBvec}
+input_spec = {"dwi": NiftiGz, "t1w": NiftiGz, "bvec": File, "bval": File}
+output_spec = {"dwi_preproc": MrtrixImage}
 
-# Create a workflow and add the dg task
-wf = Workflow(name='my_workflow', input_spec=input_spec) 
+# Create a workflow 
+wf = Workflow(name='DWIpreproc_workflow', input_spec=input_spec) 
 
-#################
-# EXAMPLE USAGE #
-#################
-# wf.add(
-#     mrconvert(
-#         input=wf.lzin.dwi,
-#         coord=(3, 0),
-#         name="select_b0"
-#     )
-# )
+# code to import bval and bvec
+@mark.task
+def merge_grads(bvec: File, bval: File) -> ty.Tuple[File, File]:
+    return (bvec, bval)
 
-# mrstats node included as another example 
-# wf.add(
-#     mrstats(
-#         input=wf.select_b0.lzout.output,
-#         name="mrstats"
-#     )
-# )
-
-# # ######################
-# # # DWI preprocessing  #
-# # ######################
-
-# create a brainmask
 wf.add(
-    dwi2mask.dwi2mask(
-        input=wf.lzin.dwi,
-        name="dwi2mask_rawDWI",
-        algorithm="fslbet"
-   )
-)
-
-# dwidenoise node
-wf.add(
-    dwidenoise(
-        input=wf.lzin.dwi,
-        name="dwidenoise",
-        mask=wf.dwi2mask_rawDWI.lzout.output,
+    merge_grads(
+        bvec=wf.lzin.bvec,
+        bval=wf.lzin.bval,
+        name="merge_grads",
     )
 )
 
-# degibbs node
+# mrconvert (to combine bval and bvec with nifti)
 wf.add(
-    mrdegibbs(
-        input=wf.dwidenoise.lzout.output,
-        name="degibbs"
+    mrconvert.mrconvert(
+        input=wf.lzin.dwi,
+        fslgrad=wf.merge_grads.lzout.out,
+        output="converted.mif",
+        name="dwi_mif"
     )
 )
 
-# DWI did not come with se_epi or blip image. Let's use rpe_none (as opposed to SynB0)
-
-# dwifslpreproc node
+# # dwi mask node
 wf.add(
-    dwifslpreproc(
-        input=wf.degibbs.lzout.output,
-        name="dwifslpreproc",
+    dwi2mask_fslbet.dwi2mask_fslbet(
+        input=wf.dwi_mif.lzout.output, 
+        output="dwi_mask.mif",
+        name="mask_node"
+    )
+)
+
+# # dwi denoise node
+wf.add(
+    dwidenoise.dwidenoise(
+        name="denoise_node",
+        dwi=wf.dwi_mif.lzout.output, 
+        out="denoised.mif", 
+        rank="rank.mif",
+        noise="noise.mif",
+        mask=wf.mask_node.lzout.output.cast(MrtrixImage)  
+    )
+)
+
+# # # dwi unring node
+wf.add(
+    mrdegibbs.mrdegibbs(
+        name="gibbscorr_node",
+        out="gibbs_corrected.mif",
+        input=wf.denoise_node.lzout.out
+        #**{'in': wf.dwi_mif.lzout.output}
+    )
+)
+
+# motion and distortion correction node
+wf.add(
+    dwifslpreproc.dwifslpreproc(
+        name="motdistcorr_node",
+        input=wf.gibbscorr_node.lzout.out,
+        output="motdist_corrected.mif",
         rpe_none=True,
-        eddy_options=" --slm=linear"
+        pe_dir="PA",  # change to header 
+        eddy_mask=wf.mask_node.lzout.output.cast(MrtrixImage)   
     )
 )
 
-# create a brainmask
+# Bias field correction (skip since algorithm needs to be specified)
 wf.add(
-    dwi2mask(
-        input=wf.dwifslpreproc.lzout.output,
-        name="dwi2mask_correctedDWI",
-        algorithm="fslbet"
-    )
+    dwibiascorrect_fsl.dwibiascorrect_fsl(
+        name="biascorrect_node",
+        input=wf.motdistcorr_node.lzout.output,
+        output="bias_corrected.mif",
+        mask=wf.mask_node.lzout.output    
+        )
 )
 
-# dwibiascorrect node
+# # regrid processed DWI to 1.25mm iso
 wf.add(
-    dwibiascorrect(
-        input=wf.dwifslpreproc.lzout.output,
-        algorithm="ants",
-        name="dwibiascorrect",
-        mask=wf.dwi2mask_correctedDWI.lzout.output,
-    )
-)
-
-# reslice DWI
-wf.add(
-    mrgrid(
-        input=wf.dwibiascorrect.lzout.output,
-        name="mrgrid_dwi",
+    mrgrid.mrgrid(
+        input=wf.biascorrect_node.lzout.output.cast(MrtrixImage),
         operation="regrid",
-        voxel=1,
+        output="PreprocessedDWI.mif",
+        name="regrid_node",
+        voxel=[1.25] 
     )
 )
 
-# reslice brainmask
+
+# # regrid DWI brainmask to 1.25mm iso
 wf.add(
-    mrgrid(
-        input=wf.dwi2mask_correctedDWI.lzout.output,
-        name="dwi2mask_correctedDWI_regridded",
-        operation="regrid_brainmask",
-        template=wf.dwibiascorrect.lzout.output,
+    mrgrid.mrgrid(
+        input=wf.mask_node.lzout.output.cast(MrtrixImage),
+        operation="regrid",
+        output="DWIbrainmask_regridded.mif",
+        name="regridmask_node",
+        interpolation="nearest",
+        voxel=[1.25,1,2] 
     )
 )
 
-wf.set_output(("dwi_preproc", wf.mrgrid_dwi.lzout.output), 
-    ("dwi_brainmask", wf.regrid_brainmask.lzout.output)
-)
+wf.set_output(("dwi_preproc", wf.regrid_node.lzout.output))
+wf.set_output(("dwi_preproc_mask", wf.regridmask_node.lzout.output))
+
+# wf.set_output(("dwi_preproc", wf.regrid_node.lzout.output),
+#               ("dwibrainmask_preproc", wf.regridmask_node.lzout.output)
+#               )
+
+# wf.set_output(("dwi_preproc", wf.biascorrect_node.lzout.output))
+# wf.set_output(("dwi_preproc", wf.denoise_node.lzout.out))
+wf.cache_dir = output_path 
 
 # Execute the workflow
 result = wf(
     dwi="/Users/arkievdsouza/Documents/NIFdata/ds000114/sub-01/ses-retest/dwi/sub-01_ses-retest_dwi.nii.gz",
-    t1w="/Users/arkievdsouza/Documents/NIFdata/ds000114/sub-01/ses-retest/anat/sub-01_ses-01_t1w.nii.gz"
+    t1w="/Users/arkievdsouza/Documents/NIFdata/ds000114/sub-01/ses-retest/anat/sub-01_ses-retest_T1w.nii.gz",
+    bvec="/Users/arkievdsouza/Documents/NIFdata/ds000114/dwi.bvec",
+    bval="/Users/arkievdsouza/Documents/NIFdata/ds000114/dwi.bval",
+    plugin="serial",
 )
+
+print(f"Processed output generated at '{result.output.dwi_preproc}'")
+
+# create_dotfile
