@@ -5,3 +5,6 @@ __pycache__
 *~
 /working-dir
 /output
+*.nii
+*.mif
+*.gz
