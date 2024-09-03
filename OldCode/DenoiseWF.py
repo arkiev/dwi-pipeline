@@ -5,6 +5,7 @@ from pydra import Workflow
 from pydra.engine.specs import File
 from pydra.tasks.mrtrix3.v3_0 import mrconvert, dwidenoise
 from fileformats.medimage import NiftiGzXBvec, NiftiGz
+from fileformats.medimage_mrtrix3 import ImageFormat
 
 # Define the path and output_path variables
 path = '/Users/arkievdsouza/Documents/NIFdata/ds000114'
@@ -35,7 +36,7 @@ wf.add(
 wf.add(
     mrconvert(
         input=wf.lzin.dwi,
-        output="dwi.mif.gz",
+        output="dwi.mif",
         name="convert_DWI",
         fslgrad=wf.merge_grads.lzout.out,
     )

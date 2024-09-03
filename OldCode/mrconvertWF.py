@@ -1,11 +1,13 @@
 import os
 import typing as ty
 import pydra  
-from pydra import Workflow, mark
+from pydra import Workflow
+from pydra import mark
 from pydra.engine.specs import File
-from pydra.tasks.mrtrix3.latest import mrconvert
+from pydra.tasks.mrtrix3.v3_0 import mrconvert
+from fileformats.medimage import NiftiGzXBvec, NiftiGz
+from fileformats.medimage_mrtrix3 import ImageFormat
 
-from fileformats.medimage import NiftiGzXBvec, NiftiGz, MrtrixImage
 
 # Define the path and output_path variables
 path = '/Users/arkievdsouza/Documents/NIFdata/ds000114'
@@ -13,10 +15,10 @@ output_path = '/Users/arkievdsouza/git/dwi-pipeline/working-dir'
 
 # Define the input_spec for the workflow
 input_spec = {"dwi": NiftiGz, "t1w": NiftiGz, "bvec": File, "bval": File}
-output_spec = {"dwi_preproc": MrtrixImage}
+output_spec = {"dwi_preproc": ImageFormat}
 
 # Create a workflow and add the dg task
-wf = Workflow(name='my_workflow', input_spec=input_spec) 
+wf = Workflow(name='my_workflow', input_spec=input_spec, cache_dir=output_path) 
 
 @mark.task
 def merge_grads(bvec: File, bval: File) -> ty.Tuple[File, File]:
@@ -32,10 +34,15 @@ wf.add(
 
 # mrconvert
 wf.add(
-    mrconvert.mrconvert(
+    mrconvert(
         input=wf.lzin.dwi,
         fslgrad=wf.merge_grads.lzout.out,
         output="converted.mif",
+        # json_export="json_export.txt",
+        # export_grad_mrtrix="grad_matrix_export.txt",
+        # export_grad_fsl=["bvec", "bval"],
+        # export_pe_table="export_pe_table.txt",
+        # export_pe_eddy=["bvec_eddy", "bval_eddy"],
         name="dwi_mif"
     )
 )
@@ -52,4 +59,4 @@ result = wf(
     plugin="serial",
 )
 
-print(f"Processed output generated at '{result.output.dwi_preproc}'")
+# print(f"Processed output generated at '{result.output.dwi_preproc}'")
