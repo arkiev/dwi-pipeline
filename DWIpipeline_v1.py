@@ -108,7 +108,7 @@ wf.add(
     Dwi2Mask_Fslbet(
         name="dwimask_task",
         in_file=wf.dwi_degibbs_task.lzout.out,  # update to be output of DWIfslpreproc
-        out_file="dwi_mask.mif",
+        out_file="dwi_mask.mif.gz",
     )
 )
 
@@ -117,7 +117,7 @@ wf.add(
         name="dwibiasfieldcorr_task",
         in_file=wf.dwi_degibbs_task.lzout.out,
         mask=wf.dwimask_task.lzout.out_file,
-        bias="biasfield.mif",
+        bias="biasfield.mif.gz",
     )
 )
 
@@ -132,7 +132,7 @@ wf.add(
         name="crop_task_dwi",
         operation="crop",
         mask=wf.dwimask_task.lzout.out_file,
-        out_file="dwi_processed.mif",
+        out_file="dwi_processed.mif.gz",
         uniform=-3,
     )
 )
@@ -144,7 +144,7 @@ wf.add(
         name="crop_task_mask",
         operation="crop",
         mask=wf.dwimask_task.lzout.out_file,
-        out_file="dwimask_procesesd.mif",
+        out_file="dwimask_procesesd.mif.gz",
         interp="nearest",
         uniform=-3,
     )
@@ -220,7 +220,7 @@ wf.add(
 wf.add(
     DwiExtract(
         in_file=wf.crop_task_dwi.lzout.out_file,
-        out_file="bzero.mif",
+        out_file="bzero.mif.gz",
         bzero=True,
         name="extract_bzeroes_task",
     )
@@ -372,7 +372,7 @@ wf.add(
         name="transformT1_task",
         in_file=wf.nifti_t1brain.lzout.out_file,
         inverse=True,
-        out_file="t1brain_registered.mif",
+        out_file="t1brain_registered.mif.gz",
         linear=wf.transformconvert_task.lzout.out_file,
         strides=wf.meanb0_task.lzout.out_file,
     )
@@ -384,7 +384,7 @@ wf.add(
         name="transform5TT_task",
         in_file=wf.lzin.fTT_image_T1space,
         inverse=True,
-        out_file="5TT_registered.mif",
+        out_file="5TT_registered.mif.gz",
         linear=wf.transformconvert_task.lzout.out_file,
         strides=wf.meanb0_task.lzout.out_file,
     )
@@ -396,7 +396,7 @@ wf.add(
         name="transform5TTvis_task",
         in_file=wf.lzin.fTTvis_image_T1space,
         inverse=True,
-        out_file="5TTvis_registered.mif",
+        out_file="5TTvis_registered.mif.gz",
         linear=wf.transformconvert_task.lzout.out_file,
         strides=wf.meanb0_task.lzout.out_file,
     )
@@ -408,7 +408,7 @@ wf.add(
         name="transformParcellation_task",
         in_file=wf.lzin.parcellation_image_T1space,
         inverse=True,
-        out_file="parcellation_registered.mif",
+        out_file="parcellation_registered.mif.gz",
         linear=wf.transformconvert_task.lzout.out_file,
         strides=wf.meanb0_task.lzout.out_file,
     )
@@ -424,7 +424,7 @@ wf.add(
         name="EstimateResponseFcn_task",
         in_file=wf.crop_task_dwi.lzout.out_file,
         mask=wf.crop_task_mask.lzout.out_file,
-        voxels="voxels.mif",
+        voxels="voxels.mif.gz",
     )
 )
 
@@ -508,7 +508,7 @@ wf.add(
         tck_weights_in=wf.SIF2_task.lzout.out_weights,
         vox=0.2,
         template=wf.transform5TT_task.lzout.out_file,
-        out_file="TDI.mif",
+        out_file="TDI.mif.gz",
     )
 )
 
@@ -520,7 +520,7 @@ wf.add(
         vox=0.2,
         template=wf.transform5TT_task.lzout.out_file,
         dec=True,
-        out_file="DECTDI.mif",
+        out_file="DECTDI.mif.gz",
     )
 )
 
