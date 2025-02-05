@@ -291,9 +291,9 @@ wf.add(
 wf.add(
     MrTransform(
         name="transformT1_task",
-        in_file=wf.nifti_t1brain.lzout.out_file,
+        in_file=wf.nifti_t1brain.lzout.out_file,  # dwi
         inverse=True,
-        out_file="t1brain_registered.mif.gz",
+        out_file="t1brain_registered.mif.gz",  # dwi_registered
         linear=wf.transformconvert_task.lzout.out_file,
         strides=wf.meanb0_task.lzout.out_file,
     )
@@ -304,7 +304,17 @@ wf.add(
 # # # # # Tractography preparation steps #
 # # # # ##################################
 
-# Generate FOD (Consider switching from subject-response to group-average-response) FEED GROUP AVERAGE RESPONSE FUNCTION TO GENERATE FOD
+# # Estimate Response Function (subject)
+wf.add(
+    Dwi2Response_Dhollander(
+        name="EstimateResponseFcn_task",
+        in_file=wf.crop_task_dwi.lzout.out_file,
+        mask=wf.crop_task_mask.lzout.out_file,
+        voxels="voxels.mif.gz",
+    )
+)
+
+# Generate FOD (Consider switching from subject-response to group-average-response)
 wf.add(
     Dwi2Fod(
         name="GenFod_task",
