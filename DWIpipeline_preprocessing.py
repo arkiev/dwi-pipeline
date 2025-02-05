@@ -1,9 +1,19 @@
-from ast import alias
-import os
 import typing as ty
+import attrs
+import os
+from pathlib import Path
+from ast import alias
+
 import pydra
 from pydra import Workflow, mark, ShellCommandTask
-from pydra.engine.specs import File
+from pydra.engine.task import FunctionTask
+from pydra.engine.specs import (
+    SpecInfo,
+    BaseSpec,
+    ShellSpec,
+    ShellOutSpec,
+    File,
+)
 from pydra.tasks.mrtrix3.v3_0 import (
     DwiDenoise,
     MrDegibbs,
@@ -12,29 +22,21 @@ from pydra.tasks.mrtrix3.v3_0 import (
     Dwi2Mask_Fslbet,
     DwiBiascorrect_Ants,
     DwiBiascorrect_Fsl,
-    TransformConvert,
-    MrTransform,
-    MrConvert,
     MrGrid,
-    DwiExtract,
-    MrCalc,
-    MrMath,
-    DwiBiasnormmask,
-    MrThreshold,
     Dwi2Response_Dhollander,
-    Dwi2Fod,
-    MtNormalise,
-    TckGen,
-    TckSift2,
-    Tck2Connectome,
-    TckMap,
 )
+from pydra.tasks.fastsurfer.latest import Fastsurfer
 from pydra.tasks.fsl.auto import EpiReg
-from pydra.engine.specs import SpecInfo, BaseSpec, ShellSpec, ShellOutSpec
-from fileformats.medimage import NiftiGzXBvec, NiftiGz
-from fileformats.medimage_mrtrix3 import ImageFormat
-from pathlib import Path
-from fileformats.medimage_mrtrix3 import ImageIn, ImageOut, Tracks  # noqa: F401
+
+from fileformats.generic import Directory, DirectoryOf
+from fileformats.medimage import NiftiGz, NiftiGzXBvec
+from fileformats.medimage_mrtrix3 import (
+    ImageFormat as Mif,
+    ImageFormat,
+    ImageIn,
+    ImageOut,
+    Tracks,  # noqa: F401
+)
 
 # Define the path and output_path variables
 output_path = "/Users/arkievdsouza/git/dwi-pipeline/working-dir/"
@@ -60,10 +62,10 @@ def run_mri_synthstrip():
 # Define the input_spec for the workflow
 input_spec = {
     "dwi_preproc_mif": File,
-    "FS_dir": str,
-    "fTTvis_image_T1space": File,
-    "fTT_image_T1space": File,
-    "parcellation_image_T1space": File,
+    # "FS_dir": str,
+    # "fTTvis_image_T1space": File,
+    # "fTT_image_T1space": File,
+    # "parcellation_image_T1space": File,
 }
 
 # Create a workflow
@@ -160,62 +162,15 @@ wf.add(
     )
 )
 
-
 # # SET WF OUTPUT
-wf.set_output(("T1_registered", wf.transformT1_task.lzout.out_file))
-wf.set_output(("fTT_registered", wf.transform5TT_task.lzout.out_file))
-wf.set_output(("fTTvis_registered", wf.transform5TTvis_task.lzout.out_file))
-# wf.set_output(("Parcellation_registered", wf.transformParcellation_task.lzout.out_file))
-# wf.set_output(("DWI_processed", wf.crop_task_dwi.lzout.out_file))
-# wf.set_output(("DWImask_processed", wf.crop_task_mask.lzout.out_file))
-# wf.set_output(("sift_mu", wf.SIF2_task.lzout.out_mu))
-# wf.set_output(("sift_weights", wf.SIF2_task.lzout.out_weights))
-wf.set_output(("wm_fod_norm", wf.NormFod_task.lzout.fod_wm_norm))
-# wf.set_output(("conenctome_file", wf.connectomics_task.lzout.connectome_out))
-wf.set_output(("TDI_file", wf.TDImap_task.lzout.out_file))
-wf.set_output(("DECTDI_file", wf.DECTDImap_task.lzout.out_file))
-# wf.set_output(("tractogram", wf.tckgen_task.lzout.tracks))
-# wf.set_output(("fTTreg", wf.transform5TT_task.lzout.out_file))
-# wf.set_output(("fTTreg", wf.meanb0_task.lzout.out_file))
-# wf.set_output(("tform", wf.transformconvert_task.lzout.out_file))
-
-# wf.set_output(("epireg", wf.epi_reg_task.lzout.matrix))
+wf.set_output(("DWI_processed", wf.crop_task_dwi.lzout.out_file))
+wf.set_output(("DWImask_processed", wf.crop_task_mask.lzout.out_file))
 
 # ########################
 # # Execute the workflow #
 # ########################
 
 result = wf(
-    dwi_preproc_mif="/Users/arkievdsouza/Desktop/ConnectomeBids/data/sub-01/dwi/sub-01_DWI.mif.gz",
-    FS_dir="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/Fastsurfer_b5d77a6efac5b7efedbd561a717bdbc6/subjects_dir/FS_outputs/",
-    fTTvis_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/5TTvis_hsvs.mif.gz",
-    fTT_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/5TT_hsvs.mif.gz",
-    parcellation_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/Atlas_desikan.mif.gz",
+    dwi_preproc_mif="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_DWI.mif.gz",
     plugin="serial",
 )
-
-
-# # Step 7: Crop images to reduce storage space (but leave some padding on the sides) - pointing to wrong folder, needs fix (nonurgent)
-# # grid DWI
-# wf.add(
-#     mrgrid(
-#         input=wf.dwibiasnormmask_task.lzout.output_dwi,
-#         name="crop_task_dwi",
-#         operation="crop",
-#         output="dwi_crop.mif",
-#         mask=wf.dwibiasnormmask_task.lzout.output_mask,
-#         uniform=-3,
-#     )
-# )
-
-# #grid dwimask
-# wf.add(
-#     mrgrid(
-#         input=wf.dwibiasnormmask_task.lzout.output_mask,
-#         name="crop_task_mask",
-#         operation="crop",
-#         output="mask_crop.mif",
-#         mask=wf.dwibiasnormmask_task.lzout.output_mask,
-#         uniform=-3,
-#     )
-# )

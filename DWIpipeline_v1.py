@@ -73,13 +73,92 @@ wf = Workflow(
     cache_dir=output_path,
 )  # output_spec=output_spec)
 
+# denoise
+wf.add(
+    DwiDenoise(
+        name="dwi_denoise_task",
+        dwi=wf.lzin.dwi_preproc_mif,
+    )
+)
+
+# unring
+wf.add(
+    MrDegibbs(
+        name="dwi_degibbs_task",
+        in_file=wf.dwi_denoise_task.lzout.out,
+    )
+)
+
+# motion and distortion correction (eddy, topup) - placeholder
+
+# create brainmask and mask DWI image - revisit
+# wf.add(
+#     DwiBiasnormmask(
+#         name="dwibiasnormmask_task",
+#         in_file=wf.dwi_degibbs_task.lzout.out, # update to be output of DWIfslpreproc
+#         output_dwi="dwi_biasnorm.mif",
+#         output_mask="dwi_mask.mif",
+#         mask_algo="threshold",
+#         output_bias="bias_field.mif",
+#         output_tissuesum="tissue_sum.mif"
+#     )
+# )
+
+wf.add(
+    Dwi2Mask_Fslbet(
+        name="dwimask_task",
+        in_file=wf.dwi_degibbs_task.lzout.out,  # update to be output of DWIfslpreproc
+        out_file="dwi_mask.mif.gz",
+    )
+)
+
+wf.add(
+    DwiBiascorrect_Fsl(  # replace this with ANTs
+        name="dwibiasfieldcorr_task",
+        in_file=wf.dwi_degibbs_task.lzout.out,
+        mask=wf.dwimask_task.lzout.out_file,
+        bias="biasfield.mif.gz",
+    )
+)
+
+# # Step 7: Crop images to reduce storage space (but leave some padding on the sides)
+
+# #CONSIDER ADDING 'REGRID' HERE!
+
+# grid DWI
+wf.add(
+    MrGrid(
+        in_file=wf.dwibiasfieldcorr_task.lzout.out_file,
+        name="crop_task_dwi",
+        operation="crop",
+        mask=wf.dwimask_task.lzout.out_file,
+        out_file="dwi_processed.mif.gz",
+        uniform=-3,
+    )
+)
+
+# grid dwimask
+wf.add(
+    MrGrid(
+        in_file=wf.dwimask_task.lzout.out_file,
+        name="crop_task_mask",
+        operation="crop",
+        mask=wf.dwimask_task.lzout.out_file,
+        out_file="dwimask_procesesd.mif.gz",
+        interp="nearest",
+        uniform=-3,
+    )
+)
+
+# # REPLACE Step8-10 with epi_reg (and transform DWI to T1 space)
 
 # # ########################
 # # # REGISTRATION CONTENT #
 # # ########################
 
-
 # Step 8: Generate target images for T1->DWI registration
+
+
 @mark.task
 @mark.annotate(
     {
@@ -299,6 +378,41 @@ wf.add(
     )
 )
 
+# #apply transform to 5TT image
+wf.add(
+    MrTransform(
+        name="transform5TT_task",
+        in_file=wf.lzin.fTT_image_T1space,
+        inverse=True,
+        out_file="5TT_registered.mif.gz",
+        linear=wf.transformconvert_task.lzout.out_file,
+        strides=wf.meanb0_task.lzout.out_file,
+    )
+)
+
+# #apply transform to 5TTvis image
+wf.add(
+    MrTransform(
+        name="transform5TTvis_task",
+        in_file=wf.lzin.fTTvis_image_T1space,
+        inverse=True,
+        out_file="5TTvis_registered.mif.gz",
+        linear=wf.transformconvert_task.lzout.out_file,
+        strides=wf.meanb0_task.lzout.out_file,
+    )
+)
+
+# #apply transform to parcellation image
+wf.add(
+    MrTransform(
+        name="transformParcellation_task",
+        in_file=wf.lzin.parcellation_image_T1space,
+        inverse=True,
+        out_file="parcellation_registered.mif.gz",
+        linear=wf.transformconvert_task.lzout.out_file,
+        strides=wf.meanb0_task.lzout.out_file,
+    )
+)
 
 # # # # ##################################
 # # # # # Tractography preparation steps #
