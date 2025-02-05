@@ -304,17 +304,7 @@ wf.add(
 # # # # # Tractography preparation steps #
 # # # # ##################################
 
-# # Estimate Response Function (subject)
-wf.add(
-    Dwi2Response_Dhollander(
-        name="EstimateResponseFcn_task",
-        in_file=wf.crop_task_dwi.lzout.out_file,
-        mask=wf.crop_task_mask.lzout.out_file,
-        voxels="voxels.mif.gz",
-    )
-)
-
-# Generate FOD (Consider switching from subject-response to group-average-response)
+# Generate FOD (Consider switching from subject-response to group-average-response) FEED GROUP AVERAGE RESPONSE FUNCTION TO GENERATE FOD
 wf.add(
     Dwi2Fod(
         name="GenFod_task",
