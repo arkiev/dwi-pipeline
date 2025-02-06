@@ -60,10 +60,13 @@ def run_mri_synthstrip():
 # Define the input_spec for the workflow
 input_spec = {
     "dwi_preproc_mif": File,
+    "dwi_mask_mif": File,
     "FS_dir": str,
-    "fTTvis_image_T1space": File,
     "fTT_image_T1space": File,
     "parcellation_image_T1space": File,
+    "avg_respfcn_WM": File,
+    "avg_respfcn_GM": File,
+    "avg_respfcn_CSF": File,
 }
 
 # Create a workflow
@@ -73,13 +76,12 @@ wf = Workflow(
     cache_dir=output_path,
 )  # output_spec=output_spec)
 
-
 # # ########################
 # # # REGISTRATION CONTENT #
 # # ########################
 
 
-# Step 8: Generate target images for T1->DWI registration
+# Step 8: Generate target images for DWI->T1 registration
 @mark.task
 @mark.annotate(
     {
@@ -140,7 +142,7 @@ wf.add(
 
 wf.add(
     DwiExtract(
-        in_file=wf.crop_task_dwi.lzout.out_file,
+        in_file=wf.lzin.dwi_preproc_mif,
         out_file="bzero.mif.gz",
         bzero=True,
         name="extract_bzeroes_task",
@@ -274,7 +276,7 @@ wf.add(
         matrix="epi2struct.mat",
     )
 )
-# info flag
+
 # # transformconvert task
 wf.add(
     TransformConvert(
@@ -287,43 +289,43 @@ wf.add(
     )
 )
 
-# Step 10: Apply transform (to get T1 images in DWI space)
+# Step 10: Apply transform (to get DWI images in T1 space)
 wf.add(
     MrTransform(
-        name="transformT1_task",
-        in_file=wf.nifti_t1brain.lzout.out_file,  # dwi
-        inverse=True,
-        out_file="t1brain_registered.mif.gz",  # dwi_registered
+        name="transformDWI_task",
+        in_file=wf.lzin.dwi_preproc_mif,
+        inverse=False,
+        out_file="DWI_registered.mif.gz",
         linear=wf.transformconvert_task.lzout.out_file,
-        strides=wf.meanb0_task.lzout.out_file,
+        strides=wf.nifti_normimg.lzout.out_file,
     )
 )
 
+wf.add(
+    MrTransform(
+        name="transformDWImask_task",
+        in_file=wf.lzin.dwi_mask_mif,
+        inverse=False,
+        out_file="DWImask_registered.mif.gz",
+        linear=wf.transformconvert_task.lzout.out_file,
+        strides=wf.nifti_normimg.lzout.out_file,
+    )
+)
 
 # # # # ##################################
 # # # # # Tractography preparation steps #
 # # # # ##################################
 
-# # Estimate Response Function (subject)
-wf.add(
-    Dwi2Response_Dhollander(
-        name="EstimateResponseFcn_task",
-        in_file=wf.crop_task_dwi.lzout.out_file,
-        mask=wf.crop_task_mask.lzout.out_file,
-        voxels="voxels.mif.gz",
-    )
-)
-
-# Generate FOD (Consider switching from subject-response to group-average-response)
+# Generate FOD (feed group-averaged response function as an input)
 wf.add(
     Dwi2Fod(
         name="GenFod_task",
         algorithm="msmt_csd",
-        dwi=wf.crop_task_dwi.lzout.out_file,
-        mask=wf.crop_task_mask.lzout.out_file,
-        response_odf_wm=wf.EstimateResponseFcn_task.lzout.out_sfwm,
-        response_odf_gm=wf.EstimateResponseFcn_task.lzout.out_gm,
-        response_odf_csf=wf.EstimateResponseFcn_task.lzout.out_csf,
+        dwi=wf.transformDWI_task.lzout.out_file,
+        mask=wf.transformDWImask_task.lzout.out_file,
+        response_odf_wm=wf.lzin.avg_respfcn_WM,
+        response_odf_gm=wf.lzin.avg_respfcn_GM,
+        response_odf_csf=wf.lzin.avg_respfcn_CSF,
     )
 )
 
@@ -350,7 +352,7 @@ wf.add(
         minlength=5.0,
         maxlength=350.0,
         seed_dynamic=wf.NormFod_task.lzout.fod_wm_norm,
-        act=wf.transform5TT_task.lzout.out_file,
+        act=wf.lzin.fTT_image_T1space,
         backtrack=True,
         crop_at_gmwmi=True,
         cutoff=0.06,
@@ -364,7 +366,7 @@ wf.add(
         name="SIF2_task",
         in_tracks=wf.tckgen_task.lzout.tracks,
         in_fod=wf.NormFod_task.lzout.fod_wm_norm,
-        act=wf.transform5TT_task.lzout.out_file,
+        act=wf.lzin.fTT_image_T1space,
         out_mu="mu.txt",
     )
 )
@@ -412,23 +414,15 @@ wf.add(
 
 
 # # SET WF OUTPUT
-wf.set_output(("T1_registered", wf.transformT1_task.lzout.out_file))
-wf.set_output(("fTT_registered", wf.transform5TT_task.lzout.out_file))
-wf.set_output(("fTTvis_registered", wf.transform5TTvis_task.lzout.out_file))
-# wf.set_output(("Parcellation_registered", wf.transformParcellation_task.lzout.out_file))
-# wf.set_output(("DWI_processed", wf.crop_task_dwi.lzout.out_file))
-# wf.set_output(("DWImask_processed", wf.crop_task_mask.lzout.out_file))
-# wf.set_output(("sift_mu", wf.SIF2_task.lzout.out_mu))
-# wf.set_output(("sift_weights", wf.SIF2_task.lzout.out_weights))
+wf.set_output(("sift_mu", wf.SIF2_task.lzout.out_mu))
+wf.set_output(("sift_weights", wf.SIF2_task.lzout.out_weights))
 wf.set_output(("wm_fod_norm", wf.NormFod_task.lzout.fod_wm_norm))
-# wf.set_output(("conenctome_file", wf.connectomics_task.lzout.connectome_out))
+wf.set_output(("conenctome_file", wf.connectomics_task.lzout.connectome_out))
 wf.set_output(("TDI_file", wf.TDImap_task.lzout.out_file))
 wf.set_output(("DECTDI_file", wf.DECTDImap_task.lzout.out_file))
-# wf.set_output(("tractogram", wf.tckgen_task.lzout.tracks))
-# wf.set_output(("fTTreg", wf.transform5TT_task.lzout.out_file))
-# wf.set_output(("fTTreg", wf.meanb0_task.lzout.out_file))
-# wf.set_output(("tform", wf.transformconvert_task.lzout.out_file))
+wf.set_output(("tractogram", wf.tckgen_task.lzout.tracks))
 
+# wf.set_output(("tform", wf.transformconvert_task.lzout.out_file))
 # wf.set_output(("epireg", wf.epi_reg_task.lzout.matrix))
 
 # ########################
@@ -436,36 +430,12 @@ wf.set_output(("DECTDI_file", wf.DECTDImap_task.lzout.out_file))
 # ########################
 
 result = wf(
-    dwi_preproc_mif="/Users/arkievdsouza/Desktop/ConnectomeBids/data/sub-01/dwi/sub-01_DWI.mif.gz",
+    dwi_preproc_mif="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_DWI.mif.gz",
     FS_dir="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/Fastsurfer_b5d77a6efac5b7efedbd561a717bdbc6/subjects_dir/FS_outputs/",
-    fTTvis_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/5TTvis_hsvs.mif.gz",
     fTT_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/5TT_hsvs.mif.gz",
     parcellation_image_T1space="/Users/arkievdsouza/git/t1-pipeline/working-dir/T1_pipeline_v3_testing/sub-01-T1w_pos_FULLPIPE/Atlas_desikan.mif.gz",
+    avg_respfcn_WM="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_tissue-WM_response.txt",
+    avg_respfcn_GM="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_tissue-GM_response.txt",
+    avg_respfcn_CSF="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_tissue-CSF_response.txt",
     plugin="serial",
 )
-
-
-# # Step 7: Crop images to reduce storage space (but leave some padding on the sides) - pointing to wrong folder, needs fix (nonurgent)
-# # grid DWI
-# wf.add(
-#     mrgrid(
-#         input=wf.dwibiasnormmask_task.lzout.output_dwi,
-#         name="crop_task_dwi",
-#         operation="crop",
-#         output="dwi_crop.mif",
-#         mask=wf.dwibiasnormmask_task.lzout.output_mask,
-#         uniform=-3,
-#     )
-# )
-
-# #grid dwimask
-# wf.add(
-#     mrgrid(
-#         input=wf.dwibiasnormmask_task.lzout.output_mask,
-#         name="crop_task_mask",
-#         operation="crop",
-#         output="mask_crop.mif",
-#         mask=wf.dwibiasnormmask_task.lzout.output_mask,
-#         uniform=-3,
-#     )
-# )
