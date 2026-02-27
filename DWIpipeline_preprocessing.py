@@ -14,7 +14,7 @@ from pydra.engine.specs import (
     ShellOutSpec,
     File,
 )
-from pydra.tasks.mrtrix3.v3_0 import (
+from pydra.tasks.mrtrix3 import (
     DwiDenoise,
     MrDegibbs,
     DwiFslpreproc,
@@ -30,16 +30,18 @@ from pydra.tasks.fsl.auto import EpiReg
 
 from fileformats.generic import Directory, DirectoryOf
 from fileformats.medimage import NiftiGz, NiftiGzXBvec
-from fileformats.medimage_mrtrix3 import (
-    ImageFormat as Mif,
-    ImageFormat,
-    ImageIn,
-    ImageOut,
-    Tracks,  # noqa: F401
-)
+
+# REMOVED: problematic mrtrix3 fileformats import
+# from fileformats.medimage_mrtrix3 import (
+#     ImageFormat as Mif,
+#     ImageFormat,
+#     ImageIn,
+#     ImageOut,
+#     Tracks,  # noqa: F401
+# )
 
 # Define the path and output_path variables
-output_path = "/Users/arkievdsouza/git/dwi-pipeline/working-dir/"
+output_path = "/Users/adso8337/Desktop/DWIpipeline_testing/Outputs/"
 
 
 @pydra.mark.task
@@ -171,6 +173,6 @@ wf.set_output(("DWImask_processed", wf.crop_task_mask.lzout.out_file))
 # ########################
 
 result = wf(
-    dwi_preproc_mif="/Users/arkievdsouza/Desktop/ConnectomeBids/sub-01_DWI.mif.gz",
+    dwi_preproc_mif="/Users/adso8337/Desktop/DWIpipeline_testing/Data/test001/DWI.mif.gz",
     plugin="serial",
 )
